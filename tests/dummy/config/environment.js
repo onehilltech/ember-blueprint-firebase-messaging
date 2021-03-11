@@ -20,6 +20,29 @@ module.exports = function(environment) {
     APP: {
       // Here you can pass flags/options to your application instance
       // when it is created
+    },
+
+    gatekeeper: {
+      baseUrl: 'http://localhost:8080/gatekeeper',
+      signInRoute: 'auth.sign-in',
+      tokenOptions: {
+        client_id: '6047eef2cee540ea6b274a94',
+        client_secret: 'hybrid'
+      }
+    },
+
+    firebase: {
+      baseUrl: 'http://localhost:8080/v1',
+      vapidKey: 'BL1Kk2RWXqIAjBIxO8jxe-XlPkQoRfbMg9Z81wvyrt4ZUAizCixYJDDLEZLsiBvGlBZd-SBr17SUo3wkYs9R7yM',
+      config: {
+        apiKey: "AIzaSyDATtfiYGc3hLk9IcylJr50fMe-uitgY_I",
+        authDomain: "onehilltech.firebaseapp.com",
+        projectId: "onehilltech",
+        storageBucket: "onehilltech.appspot.com",
+        messagingSenderId: "395886461873",
+        appId: "1:395886461873:web:c168e5677fce033b4c3390",
+        measurementId: "G-PK2689WFLM"
+      }
     }
   };
 
