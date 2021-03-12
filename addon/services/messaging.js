@@ -153,7 +153,10 @@ export default class MessagingService extends Service {
    * @param options
    */
   addMessageListener (callback, options) {
-    (this._onMessageListeners = this._onMessageListeners || A ()).pushObject (new OnMessageListener (callback, options));
+    const { when } = options;
+
+    let listener = new OnMessageListener (callback, when);
+    (this._onMessageListeners = this._onMessageListeners || A ()).pushObject (listener);
   }
 
   /**
@@ -189,12 +192,14 @@ export default class MessagingService extends Service {
  * @class Wrapper class for registered listeners.
  */
 class OnMessageListener {
-  constructor (listener, options) {
+  constructor (listener, when) {
     this.listener = listener;
-    this.options = options;
+    this.when = when;
   }
 
   onMessage (message) {
-    this.listener (message);
+    if (this.when (message)) {
+      this.listener (message);
+    }
   }
 }
