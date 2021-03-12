@@ -5,6 +5,7 @@ import { inject as service } from '@ember/service';
 import { local } from '@onehilltech/ember-cli-storage';
 import { getOwner } from '@ember/application';
 import { isNone, isPresent } from '@ember/utils';
+import { A } from '@ember/array';
 
 export default class MessagingService extends Service {
   _serviceWorkerRegistrationPromise;
@@ -41,6 +42,7 @@ export default class MessagingService extends Service {
 
     // Get our instance of the messaging framework.
     this._messaging = firebase.messaging ();
+    this._messaging.onMessage (this._onMessageHandler.bind (this));
 
     if (this.session.isSignedIn) {
       this._registerToken ();
@@ -96,14 +98,6 @@ export default class MessagingService extends Service {
     });
   }
 
-  onMessage (callback) {
-    this._messaging.onMessage (callback);
-  }
-
-  onBackgroundMessage (callback) {
-    this._messaging.onBackgroundMessage (callback);
-  }
-
   didSignIn () {
     this._registerToken ();
   }
@@ -150,5 +144,23 @@ export default class MessagingService extends Service {
         // Return the registered device.
         return device;
       });
+  }
+
+  addMessageListener (listener) {
+    (this._onMessageListeners = this._onMessageListeners || A ()).pushObject (listener);
+  }
+
+  removeMessageListener (listener) {
+    this.onMessageListeners.removeObject (listener);
+  }
+
+  get onMessageListeners () {
+    return this._onMessageListeners || A ();
+  }
+
+  _onMessageListeners;
+
+  _onMessageHandler (message) {
+    this.onMessageListeners.forEach (listener => listener (message));
   }
 }
