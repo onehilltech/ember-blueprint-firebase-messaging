@@ -146,14 +146,34 @@ export default class MessagingService extends Service {
       });
   }
 
-  addMessageListener (listener) {
-    (this._onMessageListeners = this._onMessageListeners || A ()).pushObject (listener);
+  /**
+   * Add a message listener.
+   *
+   * @param callback
+   * @param options
+   */
+  addMessageListener (callback, options) {
+    (this._onMessageListeners = this._onMessageListeners || A ()).pushObject (new OnMessageListener (callback, options));
   }
 
-  removeMessageListener (listener) {
-    this.onMessageListeners.removeObject (listener);
+  /**
+   * Remove a message listener.
+   *
+   * @param callback
+   */
+  removeMessageListener (callback) {
+    let listener = this.onMessageListeners.findBy ('listener', callback);
+
+    if (isPresent (listener)) {
+      this.onMessageListeners.removeObject (listener);
+    }
   }
 
+  /**
+   * Get the registered message listeners.
+   *
+   * @returns {*}
+   */
   get onMessageListeners () {
     return this._onMessageListeners || A ();
   }
@@ -161,6 +181,20 @@ export default class MessagingService extends Service {
   _onMessageListeners;
 
   _onMessageHandler (message) {
-    this.onMessageListeners.forEach (listener => listener (message));
+    this.onMessageListeners.forEach (listener => listener.onMessage (message));
+  }
+}
+
+/**
+ * @class Wrapper class for registered listeners.
+ */
+class OnMessageListener {
+  constructor (listener, options) {
+    this.listener = listener;
+    this.options = options;
+  }
+
+  onMessage (message) {
+    this.listener (message);
   }
 }

@@ -14,9 +14,12 @@ function wrapAndCall (target, name, override) {
   }
 }
 
-export default function (target, name, descriptor) {
+function applyDecorator (target, name, descriptor, options = {}) {
+
+
   wrapAndCall (target, 'activate', function () {
     let listener = descriptor.value.bind (this);
+    let when = (options.when || function () { return true; }).bind (this);
 
     wrapAndCall (target, 'deactivate', function () {
       // Pass control to the base class, the remove the listener.
@@ -26,6 +29,19 @@ export default function (target, name, descriptor) {
 
     // Pass control to the base class, then add the listener.
     this._super.call (this, ...arguments);
-    this.messaging.addMessageListener (listener);
+    this.messaging.addMessageListener (listener, { when });
   });
+}
+
+export default function (target, name, descriptor) {
+  if (descriptor) {
+    return applyDecorator (target, name, descriptor);
+  }
+  else {
+    let options = target;
+
+    return function (target, name, descriptor) {
+      return applyDecorator (target, name, descriptor, options);
+    }
+  }
 }
