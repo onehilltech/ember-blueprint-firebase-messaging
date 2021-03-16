@@ -7,7 +7,7 @@ import { getOwner } from '@ember/application';
 import { isNone, isPresent } from '@ember/utils';
 import { A } from '@ember/array';
 
-const SERVICE_WORKER_SCOPE = './ember-blueprint-firebase-messaging';
+const SERVICE_WORKER_SCOPE = '/ember-blueprint-firebase-messaging';
 
 export default class MessagingService extends Service {
   _serviceWorkerRegistrationPromise;
