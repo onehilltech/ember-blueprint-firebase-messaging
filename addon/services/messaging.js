@@ -7,6 +7,8 @@ import { getOwner } from '@ember/application';
 import { isNone, isPresent } from '@ember/utils';
 import { A } from '@ember/array';
 
+const SERVICE_WORKER_SCOPE = './ember-blueprint-firebase-messaging';
+
 export default class MessagingService extends Service {
   _serviceWorkerRegistrationPromise;
 
@@ -31,8 +33,10 @@ export default class MessagingService extends Service {
 
   _configureServiceWorker (config) {
     const query = encodeURIComponent (JSON.stringify (config));
-    const scriptUrl = `./ember-blueprint-firebase-messaging/firebase-messaging-sw.js?config=${query}`;
-    this._serviceWorkerRegistrationPromise = navigator.serviceWorker.register (scriptUrl);
+    const scriptUrl = `${SERVICE_WORKER_SCOPE}/firebase-messaging-sw.js?config=${query}`;
+
+    this._serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration (SERVICE_WORKER_SCOPE)
+      .then (serviceWorkerRegistration => isPresent (serviceWorkerRegistration) ? serviceWorkerRegistration : navigator.serviceWorker.register (scriptUrl));
   }
 
   _configureFirebase (config) {
