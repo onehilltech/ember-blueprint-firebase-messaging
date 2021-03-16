@@ -6,10 +6,6 @@ export default class ApplicationAdapter extends RESTAdapter {
   @service
   session;
 
-  get namespace () {
-    return 'firebase';
-  }
-
   get host () {
     const ENV = getOwner (this).resolveRegistration ('config:environment');
     const { firebase } = ENV;
