@@ -21,8 +21,13 @@ export default class MessagingService extends Service {
     this._serviceImpl = isNone (ENV.CORBER) || ENV.CORBER === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
     this._serviceImpl.configure (ENV.firebase);
 
-    // Let's make sure we are registered for
+    // Let's make sure we register for changes to the session state.
     this.session.addListener (this);
+
+    // Now, if we are already signed in, we need to register the device token.
+    if (this.session.isSignedIn) {
+      this.registerToken ();
+    }
   }
 
   destroy () {
@@ -239,10 +244,6 @@ class WebPlatformImpl extends PlatformImpl {
     // Get our instance of the messaging framework.
     this._messaging = firebase.messaging ();
     this._messaging.onMessage ((payload) => this.service.onMessage (payload));
-
-    if (this.session.isSignedIn) {
-      this._registerToken ();
-    }
   }
 }
 
