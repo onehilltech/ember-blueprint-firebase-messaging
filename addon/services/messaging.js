@@ -10,16 +10,16 @@ import { A } from '@ember/array';
 const SERVICE_WORKER_SCOPE = '/ember-blueprint-firebase-messaging';
 
 export default class MessagingService extends Service {
-  _serviceWorkerRegistrationPromise;
+  _serviceImpl = null;
 
   init () {
     super.init (...arguments);
 
+    // Create the correct platform strategy for the service, and the configure the
+    // platform strategy.
     const ENV = getOwner (this).resolveRegistration ('config:environment');
-    const { firebase: firebaseConfig } = ENV;
-
-    this._configureServiceWorker (firebaseConfig.config);
-    this._configureFirebase (firebaseConfig.config);
+    this._serviceImpl = isNone (ENV.CORBER) || ENV.CORBER === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
+    this._serviceImpl.configure (ENV.firebase);
 
     // Let's make sure we are registered for
     this.session.addListener (this);
@@ -29,28 +29,6 @@ export default class MessagingService extends Service {
     super.destroy (...arguments);
 
     this.session.removeListener (this);
-  }
-
-  _configureServiceWorker (config) {
-    const query = encodeURIComponent (JSON.stringify (config));
-    const scriptUrl = `${SERVICE_WORKER_SCOPE}/firebase-messaging-sw.js?config=${query}`;
-
-    this._serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration (SERVICE_WORKER_SCOPE)
-      .then (serviceWorkerRegistration => isPresent (serviceWorkerRegistration) ? serviceWorkerRegistration : navigator.serviceWorker.register (scriptUrl));
-  }
-
-  _configureFirebase (config) {
-    // Let's initialize the Firebase framework.
-    firebase.initializeApp (config);
-    firebase.analytics ();
-
-    // Get our instance of the messaging framework.
-    this._messaging = firebase.messaging ();
-    this._messaging.onMessage (this._onMessageHandler.bind (this));
-
-    if (this.session.isSignedIn) {
-      this._registerToken ();
-    }
   }
 
   @service
@@ -103,7 +81,7 @@ export default class MessagingService extends Service {
   }
 
   didSignIn () {
-    this._registerToken ();
+    this.registerToken ();
   }
 
   didSignOut () {
@@ -112,14 +90,17 @@ export default class MessagingService extends Service {
   }
 
   /**
-   * Register the device token with the backend server.
-   * 
+   * Register a token with the backend server.
+   *
    * @returns {*}
-   * @private
    */
-  _registerToken () {
-    return this.getToken ()
+  registerToken () {
+    return this._serviceImpl.getToken ()
       .then (token => {
+        if (isNone (token)) {
+          return;
+        }
+
         let device = this.device;
 
         if (isPresent (device)) {
@@ -141,13 +122,7 @@ export default class MessagingService extends Service {
 
         return device.save ();
       })
-      .then (device => {
-        // Cache the device information for later usage.
-        this.device = device.toJSON ({includeId: true});
-
-        // Return the registered device.
-        return device;
-      });
+      .then (device => this.device = device.toJSON ({includeId: true}));
   }
 
   /**
@@ -187,7 +162,7 @@ export default class MessagingService extends Service {
 
   _onMessageListeners;
 
-  _onMessageHandler (message) {
+  onMessage (message) {
     this.onMessageListeners.forEach (listener => listener.onMessage (message));
   }
 }
@@ -205,5 +180,74 @@ class OnMessageListener {
     if (this.when (message)) {
       this.listener (message);
     }
+  }
+}
+
+/**
+ * The base strategy for the different platforms.
+ */
+class PlatformImpl {
+  constructor (service) {
+    this.service = service;
+  }
+
+  configure (/* config */) {
+
+  }
+
+  getToken () {
+    return Promise.resolve (null);
+  }
+}
+
+/**
+ * The platform strategy for web browsers.
+ */
+class WebPlatformImpl extends PlatformImpl {
+  constructor (service) {
+    super (service);
+  }
+
+  _serviceWorkerRegistrationPromise = null;
+
+  config = null;
+
+  configure (config) {
+    this.config = config;
+
+    this._configureFirebase (config.config);
+    this._configureServiceWorker (config.config);
+  }
+
+  getToken () {
+    return this._serviceWorkerRegistrationPromise.then (registration => this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey}));
+  }
+
+  _configureServiceWorker (config) {
+    const query = encodeURIComponent (JSON.stringify (config));
+    const scriptUrl = `${SERVICE_WORKER_SCOPE}/firebase-messaging-sw.js?config=${query}`;
+
+    this._serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration (SERVICE_WORKER_SCOPE)
+      .then (serviceWorkerRegistration => isPresent (serviceWorkerRegistration) ? serviceWorkerRegistration : navigator.serviceWorker.register (scriptUrl));
+  }
+
+  _configureFirebase (config) {
+    // Let's initialize the Firebase framework.
+    firebase.initializeApp (config);
+    firebase.analytics ();
+
+    // Get our instance of the messaging framework.
+    this._messaging = firebase.messaging ();
+    this._messaging.onMessage ((payload) => this.service.onMessage (payload));
+
+    if (this.session.isSignedIn) {
+      this._registerToken ();
+    }
+  }
+}
+
+class HybridPlatformImpl extends PlatformImpl {
+  constructor (service) {
+    super (service);
   }
 }
