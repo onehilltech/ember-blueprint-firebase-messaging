@@ -15,8 +15,6 @@ function wrapAndCall (target, name, override) {
 }
 
 function applyDecorator (target, name, descriptor, options = {}) {
-
-
   wrapAndCall (target, 'activate', function () {
     let listener = descriptor.value.bind (this);
     let when = (options.when || function () { return true; }).bind (this);

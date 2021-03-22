@@ -6,6 +6,8 @@ import { local } from '@onehilltech/ember-cli-storage';
 import { getOwner } from '@ember/application';
 import { isNone, isPresent } from '@ember/utils';
 import { A } from '@ember/array';
+import subscribe from 'ember-cordova-events/utils/subscribe';
+import { action } from '@ember/object';
 
 const SERVICE_WORKER_SCOPE = '/ember-blueprint-firebase-messaging';
 
@@ -19,15 +21,15 @@ export default class MessagingService extends Service {
     // platform strategy.
     const ENV = getOwner (this).resolveRegistration ('config:environment');
     this._serviceImpl = isNone (ENV.CORBER) || ENV.CORBER === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
-    this._serviceImpl.configure (ENV.firebase);
 
-    // Let's make sure we register for changes to the session state.
-    this.session.addListener (this);
+    Promise.resolve (this._serviceImpl.configure (ENV.firebase))
+      .then (() => {
+        // Let's make sure we register for changes to the session state.
+        this.session.addListener (this);
 
-    // Now, if we are already signed in, we need to register the device token.
-    if (this.session.isSignedIn) {
-      this.registerToken ();
-    }
+        // Now, if we are already signed in, we need to register the device token.
+        this.registerToken ();
+      });
   }
 
   destroy () {
@@ -100,6 +102,12 @@ export default class MessagingService extends Service {
    * @returns {*}
    */
   registerToken () {
+    if (this.session.isSignedOut) {
+      return;
+    }
+
+    console.log ('registering device token with server');
+
     return this._serviceImpl.getToken ()
       .then (token => {
         if (isNone (token)) {
@@ -125,9 +133,17 @@ export default class MessagingService extends Service {
           device = this.store.createRecord ('firebase-device', { token });
         }
 
+        console.log ('sending device token to the server');
+
         return device.save ();
       })
-      .then (device => this.device = device.toJSON ({includeId: true}));
+      .then (device => {
+        if (isPresent (device)) {
+          console.log ('caching the device information');
+
+          this.device = device.toJSON ({includeId: true});
+        }
+      });
   }
 
   /**
@@ -196,10 +212,6 @@ class PlatformImpl {
     this.service = service;
   }
 
-  configure (/* config */) {
-
-  }
-
   getToken () {
     return Promise.resolve (null);
   }
@@ -250,5 +262,54 @@ class WebPlatformImpl extends PlatformImpl {
 class HybridPlatformImpl extends PlatformImpl {
   constructor (service) {
     super (service);
+  }
+
+  @service('ember-cordova/events')
+  cordovaEvents;
+
+  configure () {
+    let cordovaEvents = getOwner (this.service).lookup ('service:ember-cordova/events');
+    cordovaEvents.on ('deviceready', this, 'onDeviceReady');
+  }
+
+  @action
+  onDeviceReady () {
+    console.log ('the device is ready; configuring firebase messaging');
+
+    this.grantPermission ()
+      .then (() => this.service.registerToken ())
+      .then (() => this.listenForNotifications ())
+      .catch (reason => {
+        console.error (reason);
+      });
+  }
+
+  grantPermission () {
+    console.log ('grant permission to receive push notifications');
+
+    return new Promise ((resolve, reject) => window.FirebasePlugin.grantPermission (resolve, reject));
+  }
+
+  getToken () {
+    console.log ('getting the device token');
+
+    return new Promise ((resolve, reject) => {
+      if (window.FirebasePlugin) {
+        window.FirebasePlugin.getToken (resolve, reject);
+      }
+      else {
+        resolve (null);
+      }
+    });
+  }
+
+  listenForNotifications () {
+    console.log ('listen for push notifications');
+
+    window.FirebasePlugin.onNotificationOpen ((notification) => {
+      console.log(notification);
+    }, function(error) {
+      console.error(error);
+    });
   }
 }

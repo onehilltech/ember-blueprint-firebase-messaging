@@ -12,5 +12,9 @@ self.addEventListener ('install', () => {
   // Initialize the Firebase application.
   firebase.initializeApp (config);
   const messaging = firebase.messaging ();
+
+  messaging.onBackgroundMessage (payload => {
+    console.log (payload);
+  });
 });
 
