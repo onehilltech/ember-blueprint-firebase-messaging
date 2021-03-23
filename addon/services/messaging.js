@@ -96,6 +96,10 @@ export default class MessagingService extends Service {
   }
 
   didSignOut () {
+    this._resetDevice ();
+  }
+
+  _resetDevice () {
     this.device.deleteRecord ();
     this.device = null;
   }
@@ -109,8 +113,6 @@ export default class MessagingService extends Service {
     if (this.session.isSignedOut) {
       return;
     }
-
-    console.log ('registering device token with server');
 
     return this._serviceImpl.getToken ()
       .then (token => {
@@ -137,17 +139,25 @@ export default class MessagingService extends Service {
           device = this.store.createRecord ('firebase-device', { token });
         }
 
-        console.log ('sending device token to the server');
-
         return device.save ();
       })
       .then (device => {
         if (isPresent (device)) {
-          console.log ('caching the device information');
-
           this.device = device.toJSON ({includeId: true});
         }
-      });
+      })
+      .catch (reason => {
+        if (isPresent (reason.errors)) {
+          const [ error ] = reason.errors;
+
+          if (error.code === 'invalid_owner') {
+            // The device we have on record is not our device. We need to delete the local
+            // record, clear the cache, and register the device again.
+            this._resetDevice ();
+            return this.registerToken ();
+          }
+        }
+      })
   }
 
   /**
@@ -278,8 +288,6 @@ class HybridPlatformImpl extends PlatformImpl {
 
   @action
   onDeviceReady () {
-    console.log ('the device is ready; configuring firebase messaging');
-
     this.grantPermission ()
       .then (() => this.service.registerToken ())
       .then (() => this.listenForNotifications ())
@@ -289,14 +297,10 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   grantPermission () {
-    console.log ('grant permission to receive push notifications');
-
     return new Promise ((resolve, reject) => window.FirebasePlugin.grantPermission (resolve, reject));
   }
 
   getToken () {
-    console.log ('getting the device token');
-
     return new Promise ((resolve, reject) => {
       if (window.FirebasePlugin) {
         window.FirebasePlugin.getToken (resolve, reject);
@@ -308,8 +312,6 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   listenForNotifications () {
-    console.log ('listen for push notifications');
-
     window.FirebasePlugin.onNotificationOpen ((notification) => {
       console.log(notification);
     }, function(error) {
