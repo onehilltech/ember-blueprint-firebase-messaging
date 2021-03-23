@@ -91,6 +91,10 @@ export default class MessagingService extends Service {
     this.registerToken ();
   }
 
+  willSignOut () {
+
+  }
+
   didSignOut () {
     this.device.deleteRecord ();
     this.device = null;
