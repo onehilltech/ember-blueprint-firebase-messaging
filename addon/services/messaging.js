@@ -150,7 +150,7 @@ export default class MessagingService extends Service {
         if (isPresent (reason.errors)) {
           const [ error ] = reason.errors;
 
-          if (error.code === 'invalid_owner') {
+          if (error.status === '403') {
             // The device we have on record is not our device. We need to delete the local
             // record, clear the cache, and register the device again.
             this._resetDevice ();
@@ -291,9 +291,7 @@ class HybridPlatformImpl extends PlatformImpl {
     this.grantPermission ()
       .then (() => this.service.registerToken ())
       .then (() => this.listenForNotifications ())
-      .catch (reason => {
-        console.error (reason);
-      });
+      .catch (reason => console.error (reason));
   }
 
   grantPermission () {
