@@ -6,7 +6,6 @@ import { local } from '@onehilltech/ember-cli-storage';
 import { getOwner } from '@ember/application';
 import { isNone, isPresent } from '@ember/utils';
 import { A } from '@ember/array';
-import subscribe from 'ember-cordova-events/utils/subscribe';
 import { action } from '@ember/object';
 
 const SERVICE_WORKER_SCOPE = '/ember-blueprint-firebase-messaging';
