@@ -309,10 +309,11 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   listenForNotifications () {
-    window.FirebasePlugin.onNotificationOpen ((notification) => {
-      console.log(notification);
+    window.FirebasePlugin.onNotificationOpen (notification => {
+      // Pass the notification to the service.
+      this.service.onMessage (notification)
     }, function(error) {
-      console.error(error);
+      console.error (error);
     });
   }
 }
