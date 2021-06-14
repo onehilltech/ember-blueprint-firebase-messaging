@@ -199,6 +199,10 @@ export default class MessagingService extends Service {
   onMessage (message) {
     this.onMessageListeners.forEach (listener => listener.onMessage (message));
   }
+
+  onError (error) {
+    console.error (error);
+  }
 }
 
 /**
@@ -309,11 +313,6 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   listenForNotifications () {
-    window.FirebasePlugin.onNotificationOpen (notification => {
-      // Pass the notification to the service.
-      this.service.onMessage (notification)
-    }, function(error) {
-      console.error (error);
-    });
+    window.FirebasePlugin.onMessageReceived (notification => this.service.onMessage (notification), error => this.service.onError (error));
   }
 }
