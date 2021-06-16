@@ -138,6 +138,7 @@ export default class MessagingService extends Service {
           device = this.store.createRecord ('firebase-device', { token });
         }
 
+        console.log ('Registering push notification token with the server.');
         return device.save ();
       })
       .then (device => {
@@ -166,9 +167,7 @@ export default class MessagingService extends Service {
    * @param options
    */
   addMessageListener (callback, options) {
-    const { when } = options;
-
-    let listener = new OnMessageListener (callback, when);
+    let listener = new OnMessageListener (callback, options);
     (this._onMessageListeners = this._onMessageListeners || A ()).pushObject (listener);
   }
 
@@ -197,6 +196,7 @@ export default class MessagingService extends Service {
   _onMessageListeners;
 
   onMessage (message) {
+    console.log (message);
     this.onMessageListeners.forEach (listener => listener.onMessage (message));
   }
 
@@ -209,14 +209,17 @@ export default class MessagingService extends Service {
  * @class Wrapper class for registered listeners.
  */
 class OnMessageListener {
-  constructor (listener, when) {
+  constructor (listener, options) {
     this.listener = listener;
-    this.when = when;
+    this.when = options.when;
+    this.preprocess = options.preprocess;
   }
 
   onMessage (message) {
-    if (this.when (message)) {
-      this.listener (message);
+    let msg = this.preprocess (message);
+
+    if (this.when (msg)) {
+      this.listener (msg);
     }
   }
 }
@@ -276,6 +279,11 @@ class WebPlatformImpl extends PlatformImpl {
   }
 }
 
+/**
+ * @class HybridPlatformImpl
+ *
+ * The hybrid platform implementation of the messaging service.
+ */
 class HybridPlatformImpl extends PlatformImpl {
   constructor (service) {
     super (service);
@@ -291,13 +299,30 @@ class HybridPlatformImpl extends PlatformImpl {
 
   @action
   onDeviceReady () {
-    this.grantPermission ()
-      .then (() => this.service.registerToken ())
-      .then (() => this.listenForNotifications ())
+    // The device is ready. We need to check if the user has given us permission to
+    // receive push notifications. If so, then we can register the token with the
+    // server, and listen for messages. If not, we need to request permission.
+
+    this.hasPermission ()
+      .then (hasPermission => hasPermission ? hasPermission : this.grantPermission ())
+      .then (hasPermission => {
+        if (hasPermission) {
+          return this.service.registerToken ().then (() => this.listenForNotifications ());
+        }
+        else {
+          console.log ('The user has not granted permission for push notifications.');
+        }
+      })
       .catch (reason => console.error (reason));
   }
 
+  hasPermission () {
+    console.log ('Checking if we have permission for push notifications.');
+    return new Promise ((resolve, reject) => window.FirebasePlugin.hasPermission (resolve, reject));
+  }
+
   grantPermission () {
+    console.log ('Requesting permission to receive push notificiations.');
     return new Promise ((resolve, reject) => window.FirebasePlugin.grantPermission (resolve, reject));
   }
 
@@ -313,6 +338,7 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   listenForNotifications () {
-    window.FirebasePlugin.onMessageReceived (notification => this.service.onMessage (notification), error => this.service.onError (error));
+    console.log ('Listening for push notification messages');
+    window.FirebasePlugin.onMessageReceived (message => this.service.onMessage (message), error => this.service.onError (error));
   }
 }

@@ -18,6 +18,7 @@ function applyDecorator (target, name, descriptor, options = {}) {
   wrapAndCall (target, 'activate', function () {
     let listener = descriptor.value.bind (this);
     let when = (options.when || function () { return true; }).bind (this);
+    let preprocess = (options.preprocess || ((ev) => ev));
 
     wrapAndCall (target, 'deactivate', function () {
       // Pass control to the base class, the remove the listener.
@@ -27,7 +28,7 @@ function applyDecorator (target, name, descriptor, options = {}) {
 
     // Pass control to the base class, then add the listener.
     this._super.call (this, ...arguments);
-    this.messaging.addMessageListener (listener, { when });
+    this.messaging.addMessageListener (listener, { when, preprocess });
   });
 }
 
