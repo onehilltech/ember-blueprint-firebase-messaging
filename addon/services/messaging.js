@@ -170,7 +170,7 @@ export default class MessagingService extends Service {
 
     if (isPresent (device) && device.token !== token) {
       device.token = token;
-      device.token.save ().then (() => true);
+      device.save ().then (() => true);
     }
     else {
       return Promise.resolve (false);
