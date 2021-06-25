@@ -303,6 +303,8 @@ class HybridPlatformImpl extends PlatformImpl {
     // receive push notifications. If so, then we can register the token with the
     // server, and listen for messages. If not, we need to request permission.
 
+    window.FirebasePlugin.onTokenRefresh (this.refreshToken.bind (this));
+
     this.hasPermission ()
       .then (hasPermission => hasPermission ? hasPermission : this.grantPermission ())
       .then (hasPermission => {
@@ -335,6 +337,15 @@ class HybridPlatformImpl extends PlatformImpl {
         resolve (null);
       }
     });
+  }
+
+  /**
+   * Refresh the message token with the server.
+   *
+   * @param token
+   */
+  refreshToken (token) {
+
   }
 
   listenForNotifications () {
