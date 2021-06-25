@@ -161,6 +161,23 @@ export default class MessagingService extends Service {
   }
 
   /**
+   * Refresh the messaging token with the server.
+   *
+   * @param token       The messaging token.
+   */
+  refreshToken (token) {
+    let device = this.device;
+
+    if (isPresent (device) && device.token !== token) {
+      device.token = token;
+      device.token.save ().then (() => true);
+    }
+    else {
+      return Promise.resolve (false);
+    }
+  }
+
+  /**
    * Add a message listener.
    *
    * @param callback
@@ -303,7 +320,7 @@ class HybridPlatformImpl extends PlatformImpl {
     // receive push notifications. If so, then we can register the token with the
     // server, and listen for messages. If not, we need to request permission.
 
-    window.FirebasePlugin.onTokenRefresh (this.refreshToken.bind (this));
+    window.FirebasePlugin.onTokenRefresh (this.onTokenRefresh.bind (this));
 
     this.hasPermission ()
       .then (hasPermission => hasPermission ? hasPermission : this.grantPermission ())
@@ -344,8 +361,8 @@ class HybridPlatformImpl extends PlatformImpl {
    *
    * @param token
    */
-  refreshToken (token) {
-
+  onTokenRefresh (token) {
+    this.service.refreshToken (token);
   }
 
   listenForNotifications () {
