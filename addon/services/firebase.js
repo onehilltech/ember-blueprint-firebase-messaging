@@ -9,7 +9,6 @@ export default class FirebaseService extends Service {
   _baseUrl;
 
   get baseUrl () {
-
     if (isPresent (this._baseUrl)) {
       return this._baseUrl;
     }
