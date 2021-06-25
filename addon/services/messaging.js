@@ -320,13 +320,18 @@ class HybridPlatformImpl extends PlatformImpl {
     // receive push notifications. If so, then we can register the token with the
     // server, and listen for messages. If not, we need to request permission.
 
-    window.FirebasePlugin.onTokenRefresh (this.onTokenRefresh.bind (this));
-
     this.hasPermission ()
       .then (hasPermission => hasPermission ? hasPermission : this.grantPermission ())
       .then (hasPermission => {
         if (hasPermission) {
-          return this.service.registerToken ().then (() => this.listenForNotifications ());
+          return this.service.registerToken ()
+            .then (() => {
+              // We now need to listen for refresh token events from the platform.
+              window.FirebasePlugin.onTokenRefresh (this.onTokenRefresh.bind (this));
+
+              // We can now listen for notifications.
+              this.listenForNotifications ();
+            });
         }
         else {
           console.log ('The user has not granted permission for push notifications.');
