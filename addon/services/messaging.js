@@ -110,13 +110,13 @@ export default class MessagingService extends Service {
    */
   registerToken () {
     if (this.session.isSignedOut) {
-      return;
+      return Promise.resolve (undefined);
     }
 
     return this._serviceImpl.getToken ()
       .then (token => {
         if (isNone (token)) {
-          return;
+          return undefined;
         }
 
         let device = this.device;
@@ -302,16 +302,11 @@ class WebPlatformImpl extends PlatformImpl {
  * The hybrid platform implementation of the messaging service.
  */
 class HybridPlatformImpl extends PlatformImpl {
-  constructor (service) {
-    super (service);
-  }
-
   @service('ember-cordova/events')
   cordovaEvents;
 
   configure () {
-    let cordovaEvents = getOwner (this.service).lookup ('service:ember-cordova/events');
-    cordovaEvents.on ('deviceready', this, 'onDeviceReady');
+    this.cordovaEvents.on ('deviceready', this, 'onDeviceReady');
   }
 
   @action
