@@ -302,11 +302,13 @@ class WebPlatformImpl extends PlatformImpl {
  * The hybrid platform implementation of the messaging service.
  */
 class HybridPlatformImpl extends PlatformImpl {
-  @service('ember-cordova/events')
-  cordovaEvents;
+  constructor (service) {
+    super (service);
+  }
 
   configure () {
-    this.cordovaEvents.on ('deviceready', this, 'onDeviceReady');
+    let cordovaEvents = getOwner (this.service).lookup ('service:ember-cordova/events');
+    cordovaEvents.on ('deviceready', this, 'onDeviceReady');
   }
 
   @action
