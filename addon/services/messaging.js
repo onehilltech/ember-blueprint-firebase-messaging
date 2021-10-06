@@ -77,15 +77,6 @@ export default class MessagingService extends Service {
     return isPresent (this._device);
   }
 
-  getToken () {
-    return this._serviceWorkerRegistrationPromise.then (registration => {
-      const ENV = getOwner (this).resolveRegistration ('config:environment');
-      const { firebase: firebaseConfig } = ENV;
-
-      return this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: firebaseConfig.vapidKey});
-    });
-  }
-
   didSignIn () {
     this.registerToken ();
   }
@@ -277,7 +268,12 @@ class WebPlatformImpl extends PlatformImpl {
   }
 
   getToken () {
-    return this._serviceWorkerRegistrationPromise.then (registration => this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey}));
+    if (isPresent (this._messaging)) {
+      return this._serviceWorkerRegistrationPromise.then (registration => this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey}));
+    }
+    else {
+      return Promise.resolve (null);
+    }
   }
 
   _configureServiceWorker (config) {
