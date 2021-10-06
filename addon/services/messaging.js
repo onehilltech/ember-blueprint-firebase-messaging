@@ -110,13 +110,13 @@ export default class MessagingService extends Service {
    */
   registerToken () {
     if (this.session.isSignedOut) {
-      return Promise.resolve (undefined);
+      return;
     }
 
     return this._serviceImpl.getToken ()
       .then (token => {
         if (isNone (token)) {
-          return undefined;
+          return;
         }
 
         let device = this.device;
@@ -270,7 +270,10 @@ class WebPlatformImpl extends PlatformImpl {
     this.config = config;
 
     this._configureFirebase (config.config);
-    this._configureServiceWorker (config.config);
+
+    if (isPresent (this._messaging)) {
+      this._configureServiceWorker (config.config)
+    }
   }
 
   getToken () {
@@ -290,9 +293,11 @@ class WebPlatformImpl extends PlatformImpl {
     firebase.initializeApp (config);
     firebase.analytics ();
 
-    // Get our instance of the messaging framework.
-    this._messaging = firebase.messaging ();
-    this._messaging.onMessage ((payload) => this.service.onMessage (payload));
+    if (firebase.messaging.isSupported ()) {
+      // Get our instance of the messaging framework.
+      this._messaging = firebase.messaging ();
+      this._messaging.onMessage ((payload) => this.service.onMessage (payload));
+    }
   }
 }
 
@@ -305,6 +310,9 @@ class HybridPlatformImpl extends PlatformImpl {
   constructor (service) {
     super (service);
   }
+
+  @service('ember-cordova/events')
+  cordovaEvents;
 
   configure () {
     let cordovaEvents = getOwner (this.service).lookup ('service:ember-cordova/events');
