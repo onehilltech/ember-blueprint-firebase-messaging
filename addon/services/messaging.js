@@ -260,10 +260,12 @@ class WebPlatformImpl extends PlatformImpl {
   configure (config) {
     this.config = config;
 
-    this._configureFirebase (config.config);
+    if (isPresent (config)) {
+      this._configureFirebase (config.config);
 
-    if (isPresent (this._messaging)) {
-      this._configureServiceWorker (config.config)
+      if (isPresent (this._messaging)) {
+        this._configureServiceWorker (config.config)
+      }
     }
   }
 
