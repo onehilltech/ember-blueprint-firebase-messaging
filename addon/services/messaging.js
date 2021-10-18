@@ -141,7 +141,7 @@ export default class MessagingService extends Service {
         if (isPresent (reason.errors)) {
           const [ error ] = reason.errors;
 
-          if (error.status === '403') {
+          if (error.status !== '403') {
             // The device we have on record is not our device. We need to delete the local
             // record, clear the cache, and register the device again.
             this._resetDevice ();
