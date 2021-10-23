@@ -139,13 +139,24 @@ export default class MessagingService extends Service {
       })
       .catch (reason => {
         if (isPresent (reason.errors)) {
-          const [ error ] = reason.errors;
+          /// Test if we should retry the registration.
+          function shouldRetryRegistration () {
+            const [ error ] = reason.errors;
+            const { code, status } = error;
 
-          if (error.status !== '403') {
-            // The device we have on record is not our device. We need to delete the local
-            // record, clear the cache, and register the device again.
-            this._resetDevice ();
-            return this.registerToken ();
+            return status === '404' || code === 'invalid_owner';
+          }
+
+          try {
+            if (shouldRetryRegistration ()) {
+              // The device we have on record is not our device. We need to delete the local
+              // record, clear the cache, and register the device again.
+              this._resetDevice ();
+              return this.registerToken ();
+            }
+          }
+          catch (err) {
+            console.error (err);
           }
         }
       })
@@ -159,12 +170,13 @@ export default class MessagingService extends Service {
   refreshToken (token) {
     let device = this.device;
 
-    if (isPresent (device) && device.token !== token) {
+    if (isPresent (device)) {
       device.token = token;
       device.save ().then (() => true);
     }
     else {
-      return Promise.resolve (false);
+      // There is no device present. We need to register the token instead.
+      return this.registerToken ();
     }
   }
 
@@ -349,7 +361,7 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   grantPermission () {
-    console.log ('Requesting permission to receive push notificiations.');
+    console.log ('Requesting permission to receive push notifications.');
     return new Promise ((resolve, reject) => window.FirebasePlugin.grantPermission (resolve, reject));
   }
 
@@ -374,7 +386,7 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   listenForNotifications () {
-    console.log ('Listening for push notification messages');
+    console.log ('Listening for push notification messages.');
     window.FirebasePlugin.onMessageReceived (message => this.service.onMessage (message), error => this.service.onError (error));
   }
 }
