@@ -101,7 +101,7 @@ export default class MessagingService extends Service {
    */
   registerToken () {
     if (this.session.isSignedOut) {
-      return;
+      return Promise.resolve (false);
     }
 
     return this._serviceImpl.getToken ()
@@ -172,7 +172,7 @@ export default class MessagingService extends Service {
 
     if (isPresent (device)) {
       device.token = token;
-      device.save ().then (() => true);
+      return device.save ().then (() => true);
     }
     else {
       // There is no device present. We need to register the token instead.
