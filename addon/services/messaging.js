@@ -91,7 +91,7 @@ export default class MessagingService extends Service {
 
   _resetDevice () {
     this.device.deleteRecord ();
-    this.device = null;
+    this.device = undefined;
   }
 
   /**
@@ -104,34 +104,15 @@ export default class MessagingService extends Service {
       return Promise.resolve (false);
     }
 
+    function shouldRetryRegistration (reason) {
+      const [ error ] = reason.errors;
+      const { code, status } = error;
+
+      return status === '404' || code === 'invalid_owner';
+    }
+
     return this._serviceImpl.getToken ()
-      .then (token => {
-        if (isNone (token)) {
-          return;
-        }
-
-        let device = this.device;
-
-        if (isPresent (device)) {
-          // We have already registered this device with the server. Let's make sure
-          // the token is the most recent token. If not, then we need to send the new
-          // token to the server.
-
-          if (device.token !== token) {
-            device.token = token;
-          }
-        }
-        else {
-          // We have not registered the device. We need to create a new device object,
-          // and send to the server. We need to make sure to save the returned model to
-          // local storage.
-
-          device = this.store.createRecord ('firebase-device', { token });
-        }
-
-        console.log ('Registering push notification token with the server.');
-        return device.save ();
-      })
+      .then (token => this._handleFirebaseToken (token))
       .then (device => {
         if (isPresent (device)) {
           this.device = device.toJSON ({includeId: true});
@@ -139,16 +120,8 @@ export default class MessagingService extends Service {
       })
       .catch (reason => {
         if (isPresent (reason.errors)) {
-          /// Test if we should retry the registration.
-          function shouldRetryRegistration () {
-            const [ error ] = reason.errors;
-            const { code, status } = error;
-
-            return status === '404' || code === 'invalid_owner';
-          }
-
           try {
-            if (shouldRetryRegistration ()) {
+            if (shouldRetryRegistration (reason)) {
               // The device we have on record is not our device. We need to delete the local
               // record, clear the cache, and register the device again.
               this._resetDevice ();
@@ -159,7 +132,7 @@ export default class MessagingService extends Service {
             console.error (err);
           }
         }
-      })
+      });
   }
 
   /**
@@ -168,16 +141,54 @@ export default class MessagingService extends Service {
    * @param token       The messaging token.
    */
   refreshToken (token) {
+    this._handleFirebaseToken (token);
+  }
+
+  /**
+   * Handle processing of a firebase token.
+   *
+   * @param token
+   * @returns {*}
+   * @private
+   */
+  _handleFirebaseToken (token) {
+    if (isNone (token)) {
+      return null;
+    }
+
     let device = this.device;
 
     if (isPresent (device)) {
+      // We have already registered this device with the server. Let's make sure
+      // the token is the most recent token. If not, then we need to send the new
+      // token to the server.
+
       device.token = token;
-      return device.save ().then (() => true);
+
+      console.log ('registering push notification token with the server.');
+      return device.save ();
     }
     else {
-      // There is no device present. We need to register the token instead.
-      return this.registerToken ();
+      // We have not registered the device. First, let's try and find the device
+      // that matches this token. If we find one, then let's use it. Otherwise,
+      // we need to create a new device.
+
+      return this.lookupDeviceByToken (token).then (device => {
+        if (isPresent (device)) {
+          device.token = token;
+        }
+        else {
+          device = this.store.createRecord ('firebase-device', { token });
+        }
+
+        console.log ('registering push notification token with the server.');
+        return device.save ();
+      });
     }
+  }
+
+  lookupDeviceByToken (token) {
+    return this.store.queryRecord ('firebase-device', { token });
   }
 
   /**
