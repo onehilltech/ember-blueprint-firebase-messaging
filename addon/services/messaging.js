@@ -91,6 +91,7 @@ export default class MessagingService extends Service {
    * @returns {*}
    */
   registerToken () {
+    console.log ('registering push notification token');
     return this._serviceImpl.getToken ().then (token => this._handleFirebaseToken (token));
   }
 
@@ -100,6 +101,7 @@ export default class MessagingService extends Service {
    * @param token       The messaging token.
    */
   refreshToken (token) {
+    console.log ('refreshing push notification token');
     this._handleFirebaseToken (token);
   }
 
@@ -145,7 +147,7 @@ export default class MessagingService extends Service {
 
       device.token = token;
 
-      console.log ('registering push notification token with the server.');
+      console.log ('sending push notification token with the server');
       return device.save ();
     }
     else {
@@ -163,7 +165,7 @@ export default class MessagingService extends Service {
             device = this.store.createRecord ('firebase-device', { token });
           }
 
-          console.log ('registering push notification token with the server');
+          console.log ('sending push notification token with the server');
           return device.save ();
         })
         .then (device => {
@@ -173,7 +175,7 @@ export default class MessagingService extends Service {
           return device;
         })
         .catch (reason => {
-          console.log ('registration of push notification token failed');
+          console.log ('saving push notification token failed');
 
           if (isPresent (reason.errors)) {
             if (shouldRetryRegistration (reason)) {
