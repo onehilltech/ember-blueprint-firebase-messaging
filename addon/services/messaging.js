@@ -100,10 +100,6 @@ export default class MessagingService extends Service {
    * @returns {*}
    */
   registerToken () {
-    if (this.session.isSignedOut) {
-      return Promise.resolve (false);
-    }
-
     function shouldRetryRegistration (reason) {
       const [ error ] = reason.errors;
       const { code, status } = error;
@@ -153,6 +149,10 @@ export default class MessagingService extends Service {
    */
   _handleFirebaseToken (token) {
     if (isNone (token)) {
+      return null;
+    }
+
+    if (this.session.isSignedOut) {
       return null;
     }
 
