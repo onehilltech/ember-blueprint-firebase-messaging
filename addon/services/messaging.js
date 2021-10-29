@@ -138,59 +138,50 @@ export default class MessagingService extends Service {
       return null;
     }
 
+    return this.getDevice (token)
+      .then (device => {
+        // Update the device token.
+        device.token = token;
+
+        console.log ('sending push notification token with the server');
+        return device.save ();
+      })
+      .then (device => {
+        // Overwrite the existing device.
+        this.device = device.toJSON ({includeId: true});
+
+        return device;
+      })
+      .catch (reason => {
+        console.log (`saving push notification token failed: ${JSON.stringify (reason.message)}`);
+
+        if (isPresent (reason.errors)) {
+          if (shouldRetryRegistration (reason)) {
+            // The device we have on record is not our device. We need to delete the local
+            // record, clear the cache, and register the device again.
+            this._resetDevice ();
+            return this._handleFirebaseToken (token);
+          }
+        }
+      });
+  }
+
+  /**
+   * Get the device model. The device model could be local, it could be located on
+   * the remote server, or we may need to create a new one.
+   *
+   * @param token
+   * @returns {Promise<unknown>|*}
+   */
+  getDevice (token) {
     let device = this.device;
 
     if (isPresent (device)) {
-      // We have already registered this device with the server. Let's make sure
-      // the token is the most recent token. If not, then we need to send the new
-      // token to the server.
-
-      device.token = token;
-
-      console.log ('sending push notification token with the server');
-      return device.save ();
+      return Promise.resolve (device);
     }
-    else {
-      // We have not registered the device. First, let's try and find the device
-      // that matches this token. If we find one, then let's use it. Otherwise,
-      // we need to create a new device.
-      return this.lookupDeviceByToken (token)
-        .then (device => {
-          if (isPresent (device)) {
-            // Update the token in the existing device.
-            device.token = token;
-          }
-          else {
-            // Create a new device model.
-            device = this.store.createRecord ('firebase-device', { token });
-          }
 
-          console.log ('sending push notification token with the server');
-          return device.save ();
-        })
-        .then (device => {
-          // Overwrite the existing device.
-          this.device = device.toJSON ({includeId: true});
-
-          return device;
-        })
-        .catch (reason => {
-          console.log ('saving push notification token failed');
-
-          if (isPresent (reason.errors)) {
-            if (shouldRetryRegistration (reason)) {
-              // The device we have on record is not our device. We need to delete the local
-              // record, clear the cache, and register the device again.
-              this._resetDevice ();
-              return this._handleFirebaseToken (token);
-            }
-          }
-        });
-    }
-  }
-
-  lookupDeviceByToken (token) {
-    return this.store.queryRecord ('firebase-device', { token });
+    return this.store.queryRecord ('firebase-device', { token })
+      .then (device => isPresent (device) ? device : this.store.createRecord ('firebase-device', { token }));
   }
 
   /**
@@ -296,7 +287,8 @@ class WebPlatformImpl extends PlatformImpl {
 
   getToken () {
     if (isPresent (this._messaging)) {
-      return this._serviceWorkerRegistrationPromise.then (registration => this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey}));
+      return this._serviceWorkerRegistrationPromise
+        .then (registration => this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey}));
     }
     else {
       return Promise.resolve (null);
@@ -352,29 +344,28 @@ class HybridPlatformImpl extends PlatformImpl {
       .then (hasPermission => hasPermission ? hasPermission : this.grantPermission ())
       .then (hasPermission => {
         if (hasPermission) {
-          return this.service.registerToken ()
-            .then (() => {
-              // We now need to listen for refresh token events from the platform.
-              window.FirebasePlugin.onTokenRefresh (this.onTokenRefresh.bind (this));
+          // Register the token with the application server.
+          this.service.registerToken ();
 
-              // We can now listen for notifications.
-              this.listenForNotifications ();
-            });
-        }
-        else {
-          console.log ('The user has not granted permission for push notifications.');
+          // We now need to listen for refresh token events from the platform, and we can
+          // listen for push notifications.
+
+          window.FirebasePlugin.onTokenRefresh (this.onTokenRefresh.bind (this));
+          this.listenForNotifications ();
         }
       })
-      .catch (reason => console.error (reason));
+      .catch (reason => {
+        console.error (reason.message);
+      });
   }
 
   hasPermission () {
-    console.log ('Checking if we have permission for push notifications.');
+    console.log ('checking if we have permission for push notifications');
     return new Promise ((resolve, reject) => window.FirebasePlugin.hasPermission (resolve, reject));
   }
 
   grantPermission () {
-    console.log ('Requesting permission to receive push notifications.');
+    console.log ('requesting permission to receive push notifications');
     return new Promise ((resolve, reject) => window.FirebasePlugin.grantPermission (resolve, reject));
   }
 
