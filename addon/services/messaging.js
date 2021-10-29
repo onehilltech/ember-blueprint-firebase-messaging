@@ -18,17 +18,13 @@ export default class MessagingService extends Service {
 
     // Create the correct platform strategy for the service, and the configure the
     // platform strategy.
-    const ENV = getOwner (this).resolveRegistration ('config:environment');
-    this._serviceImpl = isNone (ENV.CORBER) || ENV.CORBER === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
+    const { CORBER, firebase } = getOwner (this).resolveRegistration ('config:environment');
+    this._serviceImpl = isNone (CORBER) || CORBER === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
 
-    Promise.resolve (this._serviceImpl.configure (ENV.firebase))
-      .then (() => {
-        // Let's make sure we register for changes to the session state.
-        this.session.addListener (this);
-
-        // Now, if we are already signed in, we need to register the device token.
-        this.registerToken ();
-      });
+    Promise.resolve (this._serviceImpl.configure (firebase)).then (() => {
+      // Let's make sure we register for changes to the session state.
+      this.session.addListener (this);
+    });
   }
 
   destroy () {
@@ -89,46 +85,13 @@ export default class MessagingService extends Service {
     this._resetDevice ();
   }
 
-  _resetDevice () {
-    this.device.deleteRecord ();
-    this.device = undefined;
-  }
-
   /**
    * Register a token with the backend server.
    *
    * @returns {*}
    */
   registerToken () {
-    function shouldRetryRegistration (reason) {
-      const [ error ] = reason.errors;
-      const { code, status } = error;
-
-      return status === '404' || code === 'invalid_owner';
-    }
-
-    return this._serviceImpl.getToken ()
-      .then (token => this._handleFirebaseToken (token))
-      .then (device => {
-        if (isPresent (device)) {
-          this.device = device.toJSON ({includeId: true});
-        }
-      })
-      .catch (reason => {
-        if (isPresent (reason.errors)) {
-          try {
-            if (shouldRetryRegistration (reason)) {
-              // The device we have on record is not our device. We need to delete the local
-              // record, clear the cache, and register the device again.
-              this._resetDevice ();
-              return this.registerToken ();
-            }
-          }
-          catch (err) {
-            console.error (err);
-          }
-        }
-      });
+    return this._serviceImpl.getToken ().then (token => this._handleFirebaseToken (token));
   }
 
   /**
@@ -141,6 +104,16 @@ export default class MessagingService extends Service {
   }
 
   /**
+   * Reset the device model in the application.
+   *
+   * @private
+   */
+  _resetDevice () {
+    this.device.deleteRecord ();
+    this.device = undefined;
+  }
+
+  /**
    * Handle processing of a firebase token.
    *
    * @param token
@@ -148,6 +121,13 @@ export default class MessagingService extends Service {
    * @private
    */
   _handleFirebaseToken (token) {
+    function shouldRetryRegistration (reason) {
+      const [ error ] = reason.errors;
+      const { code, status } = error;
+
+      return status === '404' || code === 'invalid_owner';
+    }
+
     if (isNone (token)) {
       return null;
     }
@@ -172,18 +152,38 @@ export default class MessagingService extends Service {
       // We have not registered the device. First, let's try and find the device
       // that matches this token. If we find one, then let's use it. Otherwise,
       // we need to create a new device.
+      return this.lookupDeviceByToken (token)
+        .then (device => {
+          if (isPresent (device)) {
+            // Update the token in the existing device.
+            device.token = token;
+          }
+          else {
+            // Create a new device model.
+            device = this.store.createRecord ('firebase-device', { token });
+          }
 
-      return this.lookupDeviceByToken (token).then (device => {
-        if (isPresent (device)) {
-          device.token = token;
-        }
-        else {
-          device = this.store.createRecord ('firebase-device', { token });
-        }
+          console.log ('registering push notification token with the server');
+          return device.save ();
+        })
+        .then (device => {
+          // Overwrite the existing device.
+          this.device = device.toJSON ({includeId: true});
 
-        console.log ('registering push notification token with the server.');
-        return device.save ();
-      });
+          return device;
+        })
+        .catch (reason => {
+          console.log ('registration of push notification token failed');
+
+          if (isPresent (reason.errors)) {
+            if (shouldRetryRegistration (reason)) {
+              // The device we have on record is not our device. We need to delete the local
+              // record, clear the cache, and register the device again.
+              this._resetDevice ();
+              return this._handleFirebaseToken (token);
+            }
+          }
+        });
     }
   }
 
