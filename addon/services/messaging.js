@@ -8,18 +8,20 @@ import { isNone, isPresent } from '@ember/utils';
 import { A } from '@ember/array';
 import { action } from '@ember/object';
 
+import { PushNotifications } from '@capacitor/push-notifications';
+
 const SERVICE_WORKER_SCOPE = '/ember-blueprint-firebase-messaging';
 
 export default class MessagingService extends Service {
   _serviceImpl = null;
 
-  init () {
-    super.init (...arguments);
+  constructor () {
+    super (...arguments);
 
     // Create the correct platform strategy for the service, and the configure the
     // platform strategy.
-    const { CORBER, firebase } = getOwner (this).resolveRegistration ('config:environment');
-    this._serviceImpl = isNone (CORBER) || CORBER === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
+    const { capacitor, firebase } = getOwner (this).resolveRegistration ('config:environment');
+    this._serviceImpl = isNone (capacitor) || capacitor === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
 
     Promise.resolve (this._serviceImpl.configure (firebase)).then (() => {
       // Let's make sure we register for changes to the session state.
@@ -91,7 +93,7 @@ export default class MessagingService extends Service {
    * @returns {*}
    */
   registerToken () {
-    console.log ('registering push notification token');
+    console.debug ('registering push notification token');
     return this._serviceImpl.getToken ().then (token => this._handleFirebaseToken (token));
   }
 
@@ -101,7 +103,7 @@ export default class MessagingService extends Service {
    * @param token       The messaging token.
    */
   refreshToken (token) {
-    console.log ('refreshing push notification token');
+    console.debug ('refreshing push notification token');
     this._handleFirebaseToken (token);
   }
 
@@ -122,9 +124,9 @@ export default class MessagingService extends Service {
    * @returns {*}
    * @private
    */
-  _handleFirebaseToken (token) {
+  async _handleFirebaseToken (token) {
     function shouldRetryRegistration (reason) {
-      const [ error ] = reason.errors;
+      const [error] = reason.errors;
       const { code, status } = error;
 
       return status === '404' || code === 'invalid_owner';
@@ -138,32 +140,27 @@ export default class MessagingService extends Service {
       return null;
     }
 
-    return this.getDevice (token)
-      .then (device => {
-        // Update the device token.
-        device.token = token;
+    try {
+      // Update the device token.
+      const device = await this.getDevice (token);
+      device.token = token;
+      await device.save ();
 
-        console.log ('sending push notification token with the server');
-        return device.save ();
-      })
-      .then (device => {
-        // Overwrite the existing device.
-        this.device = device.toJSON ({includeId: true});
+      // Overwrite the existing device.
+      this.device = device.toJSON ({ includeId: true });
+    }
+    catch (err) {
+      console.error (`saving push notification token failed: ${JSON.stringify (err.message)}`);
 
-        return device;
-      })
-      .catch (reason => {
-        console.log (`saving push notification token failed: ${JSON.stringify (reason.message)}`);
-
-        if (isPresent (reason.errors)) {
-          if (shouldRetryRegistration (reason)) {
-            // The device we have on record is not our device. We need to delete the local
-            // record, clear the cache, and register the device again.
-            this._resetDevice ();
-            return this._handleFirebaseToken (token);
-          }
+      if (isPresent (err.errors)) {
+        if (shouldRetryRegistration (err)) {
+          // The device we have on record is not our device. We need to delete the local
+          // record, clear the cache, and register the device again.
+          this._resetDevice ();
+          return this._handleFirebaseToken (token);
         }
-      });
+      }
+    }
   }
 
   /**
@@ -173,15 +170,15 @@ export default class MessagingService extends Service {
    * @param token
    * @returns {Promise<unknown>|*}
    */
-  getDevice (token) {
+  async getDevice (token) {
     let device = this.device;
 
     if (isPresent (device)) {
-      return Promise.resolve (device);
+      return device;
     }
 
-    return this.store.queryRecord ('firebase-device', { token })
-      .then (device => isPresent (device) ? device : this.store.createRecord ('firebase-device', { token }));
+    device = await this.store.queryRecord ('firebase-device', { token });
+    return device || this.store.createRecord ('firebase-device', { token });
   }
 
   /**
@@ -220,7 +217,7 @@ export default class MessagingService extends Service {
   _onMessageListeners;
 
   onMessage (message) {
-    console.log (message);
+    console.debug (message);
     this.onMessageListeners.forEach (listener => listener.onMessage (message));
   }
 
@@ -285,14 +282,13 @@ class WebPlatformImpl extends PlatformImpl {
     }
   }
 
-  getToken () {
-    if (isPresent (this._messaging)) {
-      return this._serviceWorkerRegistrationPromise
-        .then (registration => this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey}));
+  async getToken () {
+    if (!this._messaging) {
+      return null;
     }
-    else {
-      return Promise.resolve (null);
-    }
+
+    const registration = await this._serviceWorkerRegistrationPromise;
+    return this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey});
   }
 
   _configureServiceWorker (config) {
@@ -305,14 +301,14 @@ class WebPlatformImpl extends PlatformImpl {
 
   _configureFirebase (config) {
     // Let's initialize the Firebase framework.
-    firebase.initializeApp (config);
-    firebase.analytics ();
+    //firebase.initializeApp (config);
+    //firebase.analytics ();
 
-    if (firebase.messaging.isSupported ()) {
-      // Get our instance of the messaging framework.
-      this._messaging = firebase.messaging ();
-      this._messaging.onMessage ((payload) => this.service.onMessage (payload));
-    }
+    //if (firebase.messaging.isSupported ()) {
+    // Get our instance of the messaging framework.
+    //this._messaging = firebase.messaging ();
+    //this._messaging.onMessage ((payload) => this.service.onMessage (payload));
+    //}
   }
 }
 
@@ -326,12 +322,48 @@ class HybridPlatformImpl extends PlatformImpl {
     super (service);
   }
 
-  @service('ember-cordova/events')
-  cordovaEvents;
+  async configure () {
+    // Register the listeners for the service, and then register the device.
+    await this.registerListeners ();
+    await this.register ();
+  }
 
-  configure () {
-    let cordovaEvents = getOwner (this.service).lookup ('service:ember-cordova/events');
-    cordovaEvents.on ('deviceready', this, 'onDeviceReady');
+  async register () {
+    let status = await PushNotifications.checkPermissions ();
+
+    if (status.receive === 'prompt') {
+      status = await PushNotifications.requestPermissions ();
+    }
+
+    if (status.receive !== 'granted') {
+      throw new Error ('The user denied the request for permissions.');
+    }
+
+    await PushNotifications.register ();
+  }
+
+  async registerListeners () {
+    await PushNotifications.addListener ('registration', this._registration.bind (this));
+    await PushNotifications.addListener ('registrationError', this._registrationError.bind (this));
+    await PushNotifications.addListener ('pushNotificationReceived', this._pushNotificationReceived.bind (this));
+    await PushNotifications.addListener ('pushNotificationActionPerformed', this._pushNotificationActionPerformed.bind (this));
+  }
+
+  _registration (token) {
+    console.info('Registration token: ', token.value);
+    this.service.refreshToken (token.value);
+  }
+
+  _registrationError (err) {
+    console.error('Registration error: ', err.error);
+  }
+
+  _pushNotificationReceived (notification) {
+    console.log('Push notification received: ', notification);
+  }
+
+  _pushNotificationActionPerformed (notification) {
+    console.log('Push notification action performed', notification.actionId, notification.inputValue);
   }
 
   @action
@@ -360,23 +392,36 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   hasPermission () {
-    console.log ('checking if we have permission for push notifications');
+    console.debug ('checking if we have permission for push notifications');
     return new Promise ((resolve, reject) => window.FirebasePlugin.hasPermission (resolve, reject));
   }
 
   grantPermission () {
-    console.log ('requesting permission to receive push notifications');
+    console.debug ('requesting permission to receive push notifications');
     return new Promise ((resolve, reject) => window.FirebasePlugin.grantPermission (resolve, reject));
   }
 
-  getToken () {
-    return new Promise ((resolve, reject) => {
-      if (window.FirebasePlugin) {
-        window.FirebasePlugin.getToken (resolve, reject);
+  async getToken () {
+    return new Promise (async (resolve, reject) => {
+      const listener = await PushNotifications.addListener ('registration', token => {
+        resolve (token);
+        removeListeners ();
+      });
+
+      const errorListener = await PushNotifications.addListener ('registrationError', err => {
+        reject (err);
+        removeListeners ();
+      });
+
+
+      function removeListeners () {
+        listener.remove ();
+        errorListener.remove ();
       }
-      else {
-        resolve (null);
-      }
+
+      // Invoke the register method. This will trigger the registration event when the token
+      // is available.
+      await PushNotifications.register ();
     });
   }
 
@@ -390,7 +435,7 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   listenForNotifications () {
-    console.log ('Listening for push notification messages.');
+    console.debug ('Listening for push notification messages.');
     window.FirebasePlugin.onMessageReceived (message => this.service.onMessage (message), error => this.service.onError (error));
   }
 }
