@@ -1,5 +1,6 @@
 'use strict';
 
 module.exports = function(/* environment, appConfig */) {
-  return { };
+  const { CAPACITOR_BUILD } = process.env;
+  return { CAPACITOR_BUILD: !!CAPACITOR_BUILD };
 };

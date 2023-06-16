@@ -18,15 +18,14 @@ export default class MessagingService extends Service {
   constructor () {
     super (...arguments);
 
-    // Create the correct platform strategy for the service, and the configure the
-    // platform strategy.
-    const { capacitor, firebase } = getOwner (this).resolveRegistration ('config:environment');
-    this._serviceImpl = isNone (capacitor) || capacitor === false ? new WebPlatformImpl (this) : new HybridPlatformImpl (this);
+    // Create the correct platform strategy for the service, and configure it.
+    const { CAPACITOR_BUILD, firebase } = getOwner (this).resolveRegistration ('config:environment');
+    this._serviceImpl = CAPACITOR_BUILD ? new HybridPlatformImpl (this) : new WebPlatformImpl (this);
 
-    Promise.resolve (this._serviceImpl.configure (firebase)).then (() => {
-      // Let's make sure we register for changes to the session state.
-      this.session.addListener (this);
-    });
+    // Listen for changing to session.
+    this.session.addListener (this);
+
+    (async () => this._serviceImpl.configure (firebase)) ();
   }
 
   destroy () {
@@ -76,7 +75,7 @@ export default class MessagingService extends Service {
   }
 
   didSignIn () {
-    this.registerToken ();
+    (async () => this.registerToken ())();
   }
 
   willSignOut () {
@@ -92,19 +91,8 @@ export default class MessagingService extends Service {
    *
    * @returns {*}
    */
-  registerToken () {
-    console.debug ('registering push notification token');
-    return this._serviceImpl.getToken ().then (token => this._handleFirebaseToken (token));
-  }
-
-  /**
-   * Refresh the messaging token with the server.
-   *
-   * @param token       The messaging token.
-   */
-  refreshToken (token) {
-    console.debug ('refreshing push notification token');
-    this._handleFirebaseToken (token);
+  async registerToken () {
+    return this._serviceImpl.registerToken ();
   }
 
   /**
@@ -252,10 +240,6 @@ class PlatformImpl {
   constructor (service) {
     this.service = service;
   }
-
-  getToken () {
-    return Promise.resolve (null);
-  }
 }
 
 /**
@@ -270,33 +254,34 @@ class WebPlatformImpl extends PlatformImpl {
 
   config = null;
 
-  configure (config) {
+  async configure (config) {
     this.config = config;
 
     if (isPresent (config)) {
       this._configureFirebase (config.config);
 
       if (isPresent (this._messaging)) {
-        this._configureServiceWorker (config.config)
+        await this._configureServiceWorker (config.config)
       }
     }
   }
 
-  async getToken () {
+  async registerToken () {
     if (!this._messaging) {
-      return null;
+      return;
     }
 
     const registration = await this._serviceWorkerRegistrationPromise;
-    return this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey});
+    const token = await this._messaging.getToken ({serviceWorkerRegistration: registration, vapidKey: this.config.vapidKey});
+    await this.service._handleFirebaseToken (token);
   }
 
-  _configureServiceWorker (config) {
+  async _configureServiceWorker (config) {
     const query = encodeURIComponent (JSON.stringify (config));
     const scriptUrl = `${SERVICE_WORKER_SCOPE}/firebase-messaging-sw.js?config=${query}`;
 
     this._serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration (SERVICE_WORKER_SCOPE)
-      .then (serviceWorkerRegistration => isPresent (serviceWorkerRegistration) ? serviceWorkerRegistration : navigator.serviceWorker.register (scriptUrl));
+    this._serviceWorkerRegistrationPromise.then (registration => isPresent (registration) ? registration : navigator.serviceWorker.register (scriptUrl));
   }
 
   _configureFirebase (config) {
@@ -325,10 +310,10 @@ class HybridPlatformImpl extends PlatformImpl {
   async configure () {
     // Register the listeners for the service, and then register the device.
     await this.registerListeners ();
-    await this.register ();
+    await this.requestPermissionsAndRegister ();
   }
 
-  async register () {
+  async requestPermissionsAndRegister () {
     let status = await PushNotifications.checkPermissions ();
 
     if (status.receive === 'prompt') {
@@ -339,6 +324,10 @@ class HybridPlatformImpl extends PlatformImpl {
       throw new Error ('The user denied the request for permissions.');
     }
 
+    await this.registerToken ();
+  }
+
+  async registerToken () {
     await PushNotifications.register ();
   }
 
@@ -350,88 +339,19 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   _registration (token) {
-    console.info('Registration token: ', token.value);
-    this.service.refreshToken (token.value);
+    this.service._handleFirebaseToken (token.value);
   }
 
   _registrationError (err) {
-    console.error('Registration error: ', err.error);
+    console.error ('registration error: ', err.error);
   }
 
   _pushNotificationReceived (notification) {
-    console.log('Push notification received: ', notification);
+    console.log ('Push notification received: ', notification);
   }
 
   _pushNotificationActionPerformed (notification) {
     console.log('Push notification action performed', notification.actionId, notification.inputValue);
-  }
-
-  @action
-  onDeviceReady () {
-    // The device is ready. We need to check if the user has given us permission to
-    // receive push notifications. If so, then we can register the token with the
-    // server, and listen for messages. If not, we need to request permission.
-
-    this.hasPermission ()
-      .then (hasPermission => hasPermission ? hasPermission : this.grantPermission ())
-      .then (hasPermission => {
-        if (hasPermission) {
-          // Register the token with the application server.
-          this.service.registerToken ();
-
-          // We now need to listen for refresh token events from the platform, and we can
-          // listen for push notifications.
-
-          window.FirebasePlugin.onTokenRefresh (this.onTokenRefresh.bind (this));
-          this.listenForNotifications ();
-        }
-      })
-      .catch (reason => {
-        console.error (reason.message);
-      });
-  }
-
-  hasPermission () {
-    console.debug ('checking if we have permission for push notifications');
-    return new Promise ((resolve, reject) => window.FirebasePlugin.hasPermission (resolve, reject));
-  }
-
-  grantPermission () {
-    console.debug ('requesting permission to receive push notifications');
-    return new Promise ((resolve, reject) => window.FirebasePlugin.grantPermission (resolve, reject));
-  }
-
-  async getToken () {
-    return new Promise (async (resolve, reject) => {
-      const listener = await PushNotifications.addListener ('registration', token => {
-        resolve (token);
-        removeListeners ();
-      });
-
-      const errorListener = await PushNotifications.addListener ('registrationError', err => {
-        reject (err);
-        removeListeners ();
-      });
-
-
-      function removeListeners () {
-        listener.remove ();
-        errorListener.remove ();
-      }
-
-      // Invoke the register method. This will trigger the registration event when the token
-      // is available.
-      await PushNotifications.register ();
-    });
-  }
-
-  /**
-   * Refresh the message token with the server.
-   *
-   * @param token
-   */
-  onTokenRefresh (token) {
-    this.service.refreshToken (token);
   }
 
   listenForNotifications () {
