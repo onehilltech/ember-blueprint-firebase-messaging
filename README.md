@@ -44,6 +44,14 @@ not integrate properly into your capacitor application.
 
 > `CAPACITOR_BUILD` is automatically added to `configs/environment.js`.
 
+Device Token Registration
+------------------------------------------------------------------------------
+
+The device tokens are automatically registered with the backend server when
+a user signs in to a gatekeeper session. Also, the device token is removed
+from the server when a user signs out of their current gatekeeper session.
+
+
 License
 ------------------------------------------------------------------------------
 
