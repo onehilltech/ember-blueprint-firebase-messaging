@@ -1,1 +1,1 @@
-export { default as notification } from './lib/notification';
+export { default as pushNotification } from './lib/push-notification';

@@ -12,6 +12,8 @@ import { PushNotifications } from '@capacitor/push-notifications';
 
 const SERVICE_WORKER_SCOPE = '/ember-blueprint-firebase-messaging';
 
+const _notificationListeners = A ();
+
 export default class MessagingService extends Service {
   _serviceImpl = null;
 
@@ -175,9 +177,9 @@ export default class MessagingService extends Service {
    * @param callback
    * @param options
    */
-  addMessageListener (callback, options) {
-    let listener = new OnMessageListener (callback, options);
-    (this._onMessageListeners = this._onMessageListeners || A ()).pushObject (listener);
+  addNotificationListener (callback, options) {
+    const listener = new OnNotificationListener (callback, options);
+    _notificationListeners.pushObject (listener);
   }
 
   /**
@@ -185,11 +187,11 @@ export default class MessagingService extends Service {
    *
    * @param callback
    */
-  removeMessageListener (callback) {
-    let listener = this.onMessageListeners.findBy ('listener', callback);
+  removeNotificationListener (callback) {
+    const listener = _notificationListeners.findBy ('listener', callback);
 
     if (isPresent (listener)) {
-      this.onMessageListeners.removeObject (listener);
+      _notificationListeners.removeObject (listener);
     }
   }
 
@@ -198,15 +200,32 @@ export default class MessagingService extends Service {
    *
    * @returns {*}
    */
-  get onMessageListeners () {
-    return this._onMessageListeners || A ();
+  get notificationListeners () {
+    return _notificationListeners;
   }
 
-  _onMessageListeners;
+  handleNotification (notification) {
+    _notificationListeners.forEach (listener => listener.onNotification (notification));
+  }
 
-  onMessage (message) {
-    console.debug (message);
-    this.onMessageListeners.forEach (listener => listener.onMessage (message));
+  handleNotificationAction (notification) {
+    // Right now, we are always dispatching this to the application
+    // onPushNotification () handler.
+
+    const applicationRoute = this.applicationRoute;
+
+    if (isPresent (applicationRoute) && isPresent (applicationRoute.onPushNotification)) {
+      applicationRoute.onPushNotification (notification);
+    }
+  }
+
+  get applicationRoute () {
+    if (isPresent (this._applicationRoute)) {
+      return this._applicationRoute;
+    }
+
+    this._applicationRoute = getOwner (this).lookup ('route:application');
+    return this._applicationRoute;
   }
 
   onError (error) {
@@ -217,18 +236,18 @@ export default class MessagingService extends Service {
 /**
  * @class Wrapper class for registered listeners.
  */
-class OnMessageListener {
+class OnNotificationListener {
   constructor (listener, options) {
     this.listener = listener;
     this.when = options.when;
     this.preprocess = options.preprocess;
   }
 
-  onMessage (message) {
-    let msg = this.preprocess (message);
+  onNotification (notification) {
+    const result = this.preprocess (notification);
 
-    if (this.when (msg)) {
-      this.listener (msg);
+    if (this.when (result)) {
+      this.listener (result);
     }
   }
 }
@@ -343,19 +362,14 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   _registrationError (err) {
-    console.error ('registration error: ', err.error);
+    console.error ('registration error: ', err);
   }
 
   _pushNotificationReceived (notification) {
-    console.log ('Push notification received: ', notification);
+    this.service.handleNotification (notification);
   }
 
   _pushNotificationActionPerformed (notification) {
-    console.log('Push notification action performed', notification.actionId, notification.inputValue);
-  }
-
-  listenForNotifications () {
-    console.debug ('Listening for push notification messages.');
-    window.FirebasePlugin.onMessageReceived (message => this.service.onMessage (message), error => this.service.onError (error));
+    this.service.handleNotificationAction (notification);
   }
 }
