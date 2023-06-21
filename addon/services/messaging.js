@@ -214,8 +214,8 @@ export default class MessagingService extends Service {
 
     const applicationRoute = this.applicationRoute;
 
-    if (isPresent (applicationRoute) && isPresent (applicationRoute.onPushNotification)) {
-      applicationRoute.onPushNotification (notification);
+    if (isPresent (applicationRoute) && isPresent (applicationRoute.doPushNotification)) {
+      applicationRoute.doPushNotification (notification);
     }
   }
 
