@@ -17,9 +17,7 @@ const _notificationListeners = A ();
 export default class MessagingService extends Service {
   _serviceImpl = null;
 
-  constructor () {
-    super (...arguments);
-
+  async configure () {
     // Create the correct platform strategy for the service, and configure it.
     const { CAPACITOR_BUILD, firebase } = getOwner (this).resolveRegistration ('config:environment');
     this._serviceImpl = CAPACITOR_BUILD ? new HybridPlatformImpl (this) : new WebPlatformImpl (this);
@@ -27,7 +25,7 @@ export default class MessagingService extends Service {
     // Listen for changing to session.
     this.session.addListener (this);
 
-    (async () => this._serviceImpl.configure (firebase)) ();
+    await this._serviceImpl.configure (firebase);
   }
 
   destroy () {
