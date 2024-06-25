@@ -64,6 +64,19 @@ export default class MessagingService extends Service {
     return this.store.push (data);
   }
 
+  async enablePushNotifications (value) {
+    // Save the settings to the service since we cannot enable/disable push notifications
+    // at the edge. This will also prevent us from unnecessarily sending notifications
+    // to devices that are not running in the background.
+
+    const device = this.device;
+    device.enabled = value;
+    await device.save ();
+
+    // Save our device state locally.
+    this.device = device;
+  }
+
   set device (value) {
     this._device = value;
   }
