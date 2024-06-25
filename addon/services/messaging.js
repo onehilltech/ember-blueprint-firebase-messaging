@@ -6,7 +6,6 @@ import { local } from '@onehilltech/ember-cli-storage';
 import { getOwner } from '@ember/application';
 import { isNone, isPresent } from '@ember/utils';
 import { A } from '@ember/array';
-import { action } from '@ember/object';
 
 import { PushNotifications } from '@capacitor/push-notifications';
 
@@ -24,6 +23,17 @@ export default class MessagingService extends Service {
 
     // Listen for changing to session.
     this.session.addListener (this);
+
+    // First, let's create a device model for this device. We will update the device
+    // model with a registration token later.
+    let device = this._device;
+
+    if (isNone (device)) {
+      device = this.store.createRecord ('firebase-device', {});
+      await device.save ();
+
+      this._device = device;
+    }
 
     await this._serviceImpl.configure (firebase);
   }
@@ -87,16 +97,16 @@ export default class MessagingService extends Service {
     return isPresent (this._device);
   }
 
-  didSignIn () {
-    (async () => this.registerToken ())();
+  async didSignIn () {
+    await this.registerToken ();
   }
 
   willSignOut () {
 
   }
 
-  didSignOut () {
-    this._resetDevice ();
+  async didSignOut () {
+    await this.reset ();
   }
 
   /**
@@ -113,8 +123,8 @@ export default class MessagingService extends Service {
    *
    * @private
    */
-  _resetDevice () {
-    this.device.deleteRecord ();
+  async reset () {
+    await this.device.destroyRecord ();
     this.device = undefined;
   }
 
@@ -143,12 +153,13 @@ export default class MessagingService extends Service {
 
     try {
       // Update the device token.
-      const device = await this.getDevice (token);
+      const device = await this.device;
       device.token = token;
+
       await device.save ();
 
       // Overwrite the existing device.
-      this.device = device.toJSON ({ includeId: true });
+      this.device = device;
     }
     catch (err) {
       console.error (`saving push notification token failed: ${JSON.stringify (err.message)}`);
@@ -157,7 +168,7 @@ export default class MessagingService extends Service {
         if (shouldRetryRegistration (err)) {
           // The device we have on record is not our device. We need to delete the local
           // record, clear the cache, and register the device again.
-          this._resetDevice ();
+          await this.reset ();
           return this._handleFirebaseToken (token);
         }
       }
