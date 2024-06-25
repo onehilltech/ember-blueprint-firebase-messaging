@@ -6,4 +6,16 @@ export default class FirebaseDeviceModel extends Model {
 
   @attr
   token;
+
+  @attr('boolean')
+  enabled;
+
+  toJSON () {
+    return  {
+      id: this.id,
+      account: this.belongsTo ('account').id (),
+      token: this.token,
+      enabled: this.enabled
+    }
+  }
 }
