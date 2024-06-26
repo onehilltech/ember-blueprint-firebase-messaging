@@ -8,6 +8,7 @@ import { isNone, isPresent } from '@ember/utils';
 import { A } from '@ember/array';
 
 import { PushNotifications } from '@capacitor/push-notifications';
+import { App } from "@capacitor/app";
 
 const SERVICE_WORKER_SCOPE = '/ember-blueprint-firebase-messaging';
 
@@ -24,6 +25,15 @@ export default class MessagingService extends Service {
     // Listen for changing to session.
     this.session.addListener (this);
 
+    if (this.session.isSignedIn) {
+      await this.prepareDevice ();
+    }
+
+    // Configure the service implementation.
+    await this._serviceImpl.configure (firebase);
+  }
+
+  async prepareDevice () {
     // First, let's create a device model for this device. We will update the device
     // model with a registration token later.
     let device = this._device;
@@ -34,8 +44,6 @@ export default class MessagingService extends Service {
 
       this._device = device;
     }
-
-    await this._serviceImpl.configure (firebase);
   }
 
   destroy () {
@@ -98,6 +106,7 @@ export default class MessagingService extends Service {
   }
 
   async didSignIn () {
+    await this.prepareDevice ();
     await this.registerToken ();
   }
 
@@ -349,9 +358,19 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   async configure () {
-    // Register the listeners for the service, and then register the device.
     await this.registerListeners ();
     await this.requestPermissionsAndRegister ();
+  }
+
+  async appStateChange (state) {
+    const { isActive } = state;
+
+    try {
+      await this.service.enablePushNotifications (!isActive);
+    }
+    catch (err) {
+      console.error (err);
+    }
   }
 
   async requestPermissionsAndRegister () {
@@ -373,6 +392,8 @@ class HybridPlatformImpl extends PlatformImpl {
   }
 
   async registerListeners () {
+    await App.addListener('appStateChange', (state) => this.appStateChange (state));
+
     await PushNotifications.addListener ('registration', this._registration.bind (this));
     await PushNotifications.addListener ('registrationError', this._registrationError.bind (this));
     await PushNotifications.addListener ('pushNotificationReceived', this._pushNotificationReceived.bind (this));
